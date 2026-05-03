@@ -3,9 +3,14 @@ import { textToIrWithLlm, renderUnifiedSvg } from '@macrix-technology-group/bpmn
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
+const ALLOWED_MODELS = new Set(['claude-opus-4-7', 'claude-sonnet-4-6']);
+
 export async function POST(req: Request) {
   try {
-    const { prompt } = (await req.json()) as { prompt?: string };
+    const { prompt, model } = (await req.json()) as {
+      prompt?: string;
+      model?: string;
+    };
     if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
       return new Response('Missing or empty `prompt`', { status: 400 });
     }
@@ -17,7 +22,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const ir = await textToIrWithLlm(prompt);
+    const options = model && ALLOWED_MODELS.has(model) ? { model } : undefined;
+    const ir = await textToIrWithLlm(prompt, options);
     const { svg } = await renderUnifiedSvg(ir);
 
     return new Response(svg, {
