@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  outputFileTracingIncludes: {
+    "/api/generate": [
+      "./node_modules/@macrix-technology-group/bpmn-forge/prompts/**",
+    ],
+  },
 };
 
 export default nextConfig;
