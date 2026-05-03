@@ -13,9 +13,19 @@ type ModelId = (typeof MODELS)[number]['id'];
 const DEFAULT_MODEL: ModelId = 'claude-opus-4-7';
 const MODEL_STORAGE_KEY = 'bpmn-forge-playground:model';
 
+type View = 'svg' | 'json' | 'xml';
+const VIEWS: { id: View; label: string }[] = [
+  { id: 'svg', label: 'Diagram' },
+  { id: 'json', label: 'JSON (IR)' },
+  { id: 'xml', label: 'BPMN XML' }
+];
+
+type GenerateResult = { svg: string; ir: unknown; bpmn: string };
+
 export default function Home() {
   const [prompt, setPrompt] = useState(EXAMPLE_PROMPT);
-  const [svg, setSvg] = useState('');
+  const [result, setResult] = useState<GenerateResult | null>(null);
+  const [view, setView] = useState<View>('svg');
   const [loading, setLoading] = useState(false);
   const [promptLoading, setPromptLoading] = useState(false);
   const [error, setError] = useState('');
@@ -37,21 +47,50 @@ export default function Home() {
   async function generate() {
     setLoading(true);
     setError('');
-    setSvg('');
+    setResult(null);
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ prompt, model })
       });
-      const text = await res.text();
-      if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
-      setSvg(text);
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as GenerateResult;
+      setResult(data);
+      setView('svg');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
+  }
+
+  function downloadActiveView() {
+    if (!result) return;
+    const map: Record<View, { content: string; mime: string; name: string }> = {
+      svg: { content: result.svg, mime: 'image/svg+xml', name: 'process.svg' },
+      json: {
+        content: JSON.stringify(result.ir, null, 2),
+        mime: 'application/json',
+        name: 'process.ir.json'
+      },
+      xml: {
+        content: result.bpmn,
+        mime: 'application/xml',
+        name: 'process.bpmn'
+      }
+    };
+    const { content, mime, name } = map[view];
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   async function generatePrompt() {
@@ -200,7 +239,7 @@ export default function Home() {
             borderRadius: 6
           }}
         >
-          {loading ? 'Generating…' : 'Generate SVG'}
+          {loading ? 'Generating…' : 'Generate BPMN'}
         </button>
         <button
           onClick={generatePrompt}
@@ -217,17 +256,9 @@ export default function Home() {
         >
           {promptLoading ? 'Writing prompt…' : 'Generate prompt'}
         </button>
-        {svg && (
+        {result && (
           <button
-            onClick={() => {
-              const blob = new Blob([svg], { type: 'image/svg+xml' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = 'process.svg';
-              a.click();
-              URL.revokeObjectURL(url);
-            }}
+            onClick={downloadActiveView}
             style={{
               padding: '8px 16px',
               fontSize: 14,
@@ -238,7 +269,7 @@ export default function Home() {
               borderRadius: 6
             }}
           >
-            Download SVG
+            Download {VIEWS.find((v) => v.id === view)?.label}
           </button>
         )}
       </div>
@@ -260,18 +291,87 @@ export default function Home() {
         </pre>
       )}
 
-      {svg && (
-        <div
-          style={{
-            marginTop: 16,
-            border: '1px solid #ddd',
-            borderRadius: 6,
-            padding: 16,
-            overflow: 'auto',
-            background: 'white'
-          }}
-          dangerouslySetInnerHTML={{ __html: svg }}
-        />
+      {result && (
+        <div style={{ marginTop: 16 }}>
+          <div
+            role="tablist"
+            aria-label="Output format"
+            style={{
+              display: 'flex',
+              gap: 4,
+              borderBottom: '1px solid #ddd'
+            }}
+          >
+            {VIEWS.map((v) => {
+              const active = view === v.id;
+              return (
+                <button
+                  key={v.id}
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setView(v.id)}
+                  style={{
+                    padding: '8px 14px',
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    background: 'transparent',
+                    color: active ? '#111' : '#666',
+                    border: 'none',
+                    borderBottom: active
+                      ? '2px solid #111'
+                      : '2px solid transparent',
+                    marginBottom: -1,
+                    fontWeight: active ? 600 : 400
+                  }}
+                >
+                  {v.label}
+                </button>
+              );
+            })}
+          </div>
+          <div
+            style={{
+              border: '1px solid #ddd',
+              borderTop: 'none',
+              borderRadius: '0 0 6px 6px',
+              padding: 16,
+              overflow: 'auto',
+              background: 'white'
+            }}
+          >
+            {view === 'svg' && (
+              <div dangerouslySetInnerHTML={{ __html: result.svg }} />
+            )}
+            {view === 'json' && (
+              <pre
+                style={{
+                  margin: 0,
+                  fontSize: 12,
+                  fontFamily:
+                    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                  whiteSpace: 'pre',
+                  color: '#111'
+                }}
+              >
+                {JSON.stringify(result.ir, null, 2)}
+              </pre>
+            )}
+            {view === 'xml' && (
+              <pre
+                style={{
+                  margin: 0,
+                  fontSize: 12,
+                  fontFamily:
+                    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                  whiteSpace: 'pre',
+                  color: '#111'
+                }}
+              >
+                {result.bpmn}
+              </pre>
+            )}
+          </div>
+        </div>
       )}
     </main>
   );

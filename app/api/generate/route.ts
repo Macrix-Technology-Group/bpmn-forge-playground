@@ -1,4 +1,8 @@
-import { textToIrWithLlm, renderUnifiedSvg } from '@macrix-technology-group/bpmn-forge';
+import {
+  textToIrWithLlm,
+  renderUnifiedSvg,
+  exportBpmnXmlWithDi
+} from '@macrix-technology-group/bpmn-forge';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -25,11 +29,9 @@ export async function POST(req: Request) {
     const options = model && ALLOWED_MODELS.has(model) ? { model } : undefined;
     const ir = await textToIrWithLlm(prompt, options);
     const { svg } = await renderUnifiedSvg(ir);
+    const bpmn = exportBpmnXmlWithDi(ir);
 
-    return new Response(svg, {
-      status: 200,
-      headers: { 'content-type': 'image/svg+xml; charset=utf-8' }
-    });
+    return Response.json({ svg, ir, bpmn });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return new Response(message, { status: 500 });
