@@ -61,12 +61,11 @@ export default function Home() {
     const svgEl = inner.querySelector('svg');
     if (!svgEl) return;
     const naturalW =
-      svgEl.viewBox?.baseVal?.width ||
-      svgEl.width?.baseVal?.value ||
-      svgEl.getBoundingClientRect().width / zoom;
+      svgEl.viewBox?.baseVal?.width || svgEl.width?.baseVal?.value;
     if (!naturalW) return;
     const visibleW = scroll.clientWidth - 32;
     setZoom(clampZoom(visibleW / naturalW));
+    scroll.scrollTo({ top: 0, left: 0 });
   }
 
   useEffect(() => {
@@ -447,11 +446,7 @@ export default function Home() {
                 >
                   <div
                     ref={svgInnerRef}
-                    style={{
-                      transform: `scale(${zoom})`,
-                      transformOrigin: '0 0',
-                      width: 'fit-content'
-                    }}
+                    style={{ zoom, width: 'fit-content' }}
                     dangerouslySetInnerHTML={{ __html: result.svg }}
                   />
                 </div>
