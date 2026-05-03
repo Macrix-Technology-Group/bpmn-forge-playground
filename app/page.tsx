@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const EXAMPLE_PROMPT = `When a sales order is released by ERP, the WES validates stock and creates a wave. Picking and label requesting happen in parallel; after both, the parcel is packed, weighed, QC'd (loop on fail), staged, loaded, and a shipment confirmation is sent back to ERP.`;
 
@@ -22,6 +22,25 @@ const VIEWS: { id: View; label: string }[] = [
 
 type GenerateResult = { svg: string; ir: unknown; bpmn: string };
 
+const ZOOM_MIN = 0.1;
+const ZOOM_MAX = 8;
+const ZOOM_STEP = 1.2;
+
+function clampZoom(z: number): number {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+}
+
+const zoomBtnStyle: React.CSSProperties = {
+  padding: '4px 10px',
+  fontSize: 13,
+  cursor: 'pointer',
+  background: 'white',
+  color: '#111',
+  border: '1px solid #ccc',
+  borderRadius: 4,
+  lineHeight: 1
+};
+
 export default function Home() {
   const [prompt, setPrompt] = useState(EXAMPLE_PROMPT);
   const [result, setResult] = useState<GenerateResult | null>(null);
@@ -31,6 +50,24 @@ export default function Home() {
   const [error, setError] = useState('');
   const [model, setModel] = useState<ModelId>(DEFAULT_MODEL);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const svgScrollRef = useRef<HTMLDivElement | null>(null);
+  const svgInnerRef = useRef<HTMLDivElement | null>(null);
+
+  function fitSvgToWidth() {
+    const scroll = svgScrollRef.current;
+    const inner = svgInnerRef.current;
+    if (!scroll || !inner) return;
+    const svgEl = inner.querySelector('svg');
+    if (!svgEl) return;
+    const naturalW =
+      svgEl.viewBox?.baseVal?.width ||
+      svgEl.width?.baseVal?.value ||
+      svgEl.getBoundingClientRect().width / zoom;
+    if (!naturalW) return;
+    const visibleW = scroll.clientWidth - 32;
+    setZoom(clampZoom(visibleW / naturalW));
+  }
 
   useEffect(() => {
     const saved = localStorage.getItem(MODEL_STORAGE_KEY);
@@ -61,6 +98,7 @@ export default function Home() {
       const data = (await res.json()) as GenerateResult;
       setResult(data);
       setView('svg');
+      setZoom(1);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -118,6 +156,8 @@ export default function Home() {
         padding: 24,
         fontFamily: 'system-ui, -apple-system, sans-serif',
         maxWidth: 1200,
+        width: '100%',
+        minWidth: 0,
         margin: '0 auto'
       }}
     >
@@ -334,18 +374,96 @@ export default function Home() {
               border: '1px solid #ddd',
               borderTop: 'none',
               borderRadius: '0 0 6px 6px',
-              padding: 16,
-              overflow: 'auto',
               background: 'white'
             }}
           >
             {view === 'svg' && (
-              <div dangerouslySetInnerHTML={{ __html: result.svg }} />
+              <>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 4,
+                    alignItems: 'center',
+                    padding: '6px 10px',
+                    borderBottom: '1px solid #eee',
+                    background: '#fafafa'
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setZoom((z) => clampZoom(z / ZOOM_STEP))}
+                    aria-label="Zoom out"
+                    title="Zoom out"
+                    style={zoomBtnStyle}
+                  >
+                    −
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setZoom(1)}
+                    title="Reset zoom"
+                    style={{
+                      ...zoomBtnStyle,
+                      minWidth: 56,
+                      fontVariantNumeric: 'tabular-nums'
+                    }}
+                  >
+                    {Math.round(zoom * 100)}%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setZoom((z) => clampZoom(z * ZOOM_STEP))}
+                    aria-label="Zoom in"
+                    title="Zoom in"
+                    style={zoomBtnStyle}
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    onClick={fitSvgToWidth}
+                    title="Fit to width"
+                    style={{ ...zoomBtnStyle, marginLeft: 4 }}
+                  >
+                    Fit
+                  </button>
+                </div>
+                <div
+                  ref={svgScrollRef}
+                  style={{
+                    padding: 16,
+                    overflow: 'auto',
+                    maxHeight: '70vh',
+                    width: '100%',
+                    minWidth: 0
+                  }}
+                  onWheel={(e) => {
+                    if (e.ctrlKey || e.metaKey) {
+                      e.preventDefault();
+                      const factor = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+                      setZoom((z) => clampZoom(z * factor));
+                    }
+                  }}
+                >
+                  <div
+                    ref={svgInnerRef}
+                    style={{
+                      transform: `scale(${zoom})`,
+                      transformOrigin: '0 0',
+                      width: 'fit-content'
+                    }}
+                    dangerouslySetInnerHTML={{ __html: result.svg }}
+                  />
+                </div>
+              </>
             )}
             {view === 'json' && (
               <pre
                 style={{
                   margin: 0,
+                  padding: 16,
+                  maxHeight: '70vh',
+                  overflow: 'auto',
                   fontSize: 12,
                   fontFamily:
                     'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
@@ -360,6 +478,9 @@ export default function Home() {
               <pre
                 style={{
                   margin: 0,
+                  padding: 16,
+                  maxHeight: '70vh',
+                  overflow: 'auto',
                   fontSize: 12,
                   fontFamily:
                     'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
